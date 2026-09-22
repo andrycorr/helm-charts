@@ -34,5 +34,14 @@ spec:
       {{- end }}
       backendRefs:
         - name: {{ include "common.names.fullname" . }}
-          port: {{ .Values.service.portHttp }}
+          {{- $httpPort := "" }}
+          {{- range .Values.ports }}
+          {{- if eq .name "http" }}
+          {{- $httpPort = .servicePort }}
+          {{- end }}
+          {{- end }}
+          {{- if not $httpPort }}
+          {{- fail "gatewayApi.enabled requires a \"http\" entry in .Values.ports (Gateway API needs a numeric service port)" }}
+          {{- end }}
+          port: {{ $httpPort }}
 {{- end }}

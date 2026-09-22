@@ -6,6 +6,12 @@ metadata:
     {{- include "common.labels.standard" . | nindent 4 }}
 spec:
   replicas: {{.Values.replicaCount }}
+  progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds | default 1200 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "common.labels.matchLabels" . | nindent 6 }}
@@ -15,23 +21,30 @@ spec:
         {{- include "common.labels.matchLabels" . | nindent 8 }}
     spec:
       containers:
-        - name: proxy
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        - name: {{ .Values.outpostType }}
+          image: "{{ .Values.image.repository }}/{{ .Values.outpostType }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{.Values.image.pullPolicy }}
           ports:
-            - name: http
-              containerPort: 9000
+            {{- range .Values.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .containerPort }}
               protocol: TCP
-            - name: https
-              containerPort: 9443
-              protocol: TCP
+            {{- end }}
           envFrom:
             - secretRef:
                 name: {{ .Values.authentik.existingSecretName | default (include "common.names.fullname" .) }}
-          livenessProbe:  
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
           readinessProbe:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with.Values.nodeSelector }}
