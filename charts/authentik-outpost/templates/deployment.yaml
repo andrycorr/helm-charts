@@ -1,3 +1,7 @@
+{{- $allowedOutpostTypes := list "proxy" "ldap" }}
+{{- if not (has .Values.outpostType $allowedOutpostTypes) }}
+{{- fail (printf "outpostType must be one of [%s], got %q" (join ", " $allowedOutpostTypes) (toString .Values.outpostType)) }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

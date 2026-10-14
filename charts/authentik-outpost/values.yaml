@@ -62,54 +62,48 @@ ports:
     servicePort: 9443
     protocol: TCP
 
-# -- Startup probe configuration for the outpost pod. Leave empty ({}) to disable.
-# No default is set — pick one of the examples below (or your own) explicitly,
-# since Helm deep-merges maps and a preset httpGet/tcpSocket here would collide
-# with whatever handler an overriding values file sets.
+# -- Startup probe for the outpost pod. Disabled by default ({}).
+# Example for an LDAP outpost:
+#   startupProbe:
+#     tcpSocket:
+#       port: 6636
+#     periodSeconds: 10
+#     failureThreshold: 120
 startupProbe: {}
-# -- Example for a proxy outpost (exposes /ping over http):
-#  httpGet:
-#    path: /outpost.goauthentik.io/ping
-#    port: http
-#  initialDelaySeconds: 10
-#  periodSeconds: 10
-# -- Example for an LDAP outpost (no HTTP /ping endpoint):
-#  tcpSocket:
-#    port: ldap
-#  periodSeconds: 10
-#  failureThreshold: 120
  
-# -- Liveness probe configuration for the outpost pod. Leave empty ({}) to disable.
-# No default is set — see startupProbe above for why, and pick an example below.
-livenessProbe: {}
-# -- Example for a proxy outpost (exposes /ping over http):
-#  httpGet:
-#    path: /outpost.goauthentik.io/ping
-#    port: http
-#  initialDelaySeconds: 10
-#  periodSeconds: 10
-# -- Example for an LDAP outpost (no HTTP /ping endpoint):
-#  tcpSocket:
-#    port: ldap
-#  periodSeconds: 10
-#  timeoutSeconds: 3
-#  failureThreshold: 3
+# -- Liveness probe for the outpost pod. Leave empty ({}) to disable.
+# The default is for the proxy outpost, which serves /outpost.goauthentik.io/ping on the http port.
+# The LDAP outpost has no HTTP ping endpoint. Helm merges your values into these defaults,
+# so remove the default handler with `httpGet: null` when switching to another handler:
+#   livenessProbe:
+#     httpGet: null
+#     tcpSocket:
+#       port: 6636
+#     periodSeconds: 10
+#     timeoutSeconds: 3
+#     failureThreshold: 3
+livenessProbe:
+  httpGet:
+    path: /outpost.goauthentik.io/ping
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
  
-# -- Readiness probe configuration for the outpost pod. Leave empty ({}) to disable.
-# No default is set — see startupProbe above for why, and pick an example below.
-readinessProbe: {}
-# -- Example for a proxy outpost (exposes /ping over http):
-#  httpGet:
-#    path: /outpost.goauthentik.io/ping
-#    port: http
-#  initialDelaySeconds: 10
-#  periodSeconds: 10
-# -- Example for an LDAP outpost (no HTTP /ping endpoint):
-#  tcpSocket:
-#    port: ldap
-#  periodSeconds: 30
-#  timeoutSeconds: 3
-#  failureThreshold: 5
+# -- Readiness probe for the outpost pod. Leave empty ({}) to disable.
+# The default is for the proxy outpost. For an LDAP outpost use `httpGet: null` as above:
+#   readinessProbe:
+#     httpGet: null
+#     tcpSocket:
+#       port: 6636
+#     periodSeconds: 30
+#     timeoutSeconds: 3
+#     failureThreshold: 5
+readinessProbe:
+  httpGet:
+    path: /outpost.goauthentik.io/ping
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
 
 # -- Resource requests and limits for the outpost pod.
 # It is recommended to adjust these values based on observed performance.

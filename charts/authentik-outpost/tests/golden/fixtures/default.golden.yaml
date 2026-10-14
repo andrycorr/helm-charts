@@ -41,6 +41,18 @@ spec:
           envFrom:
             - secretRef:
                 name: golden-file-test-authentik-outpost
+          livenessProbe:
+            httpGet:
+              path: /outpost.goauthentik.io/ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /outpost.goauthentik.io/ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
           resources:
             limits:
               cpu: 100m

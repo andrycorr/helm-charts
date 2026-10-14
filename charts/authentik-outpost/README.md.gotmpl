@@ -6,6 +6,9 @@ to your Kubernetes cluster. It supports multiple outpost types — `proxy` and
 and probe requirements differ per type, but the rest of the chart (Deployment,
 Service, Secret, Ingress) is shared.
 
+The default values are tuned for the **proxy** outpost. To deploy an LDAP
+outpost see [Deploying an LDAP outpost](#deploying-an-ldap-outpost).
+
 ## Prerequisites
 
 - A running [Authentik](https://goauthentik.io) instance
@@ -49,9 +52,10 @@ the outpost type suffix.
 If you don't update this, the image path will be malformed
 (`ghcr.io/goauthentik/proxy/proxy`) and the pod will fail to pull.
 
-### 2. New required value: `outpostType`
+### 2. New value: `outpostType`
 
-Set `outpostType` to the kind of outpost you're deploying (`proxy` or `ldap`).
+Set `outpostType` to the kind of outpost you're deploying. Allowed values:
+`proxy` and `ldap`. Any other value fails at render time.
 It's used both for the image path above and as the container name.
 Default: `proxy` (safe for existing proxy releases that don't set it).
 
@@ -75,37 +79,10 @@ ports:
 The defaults above match the old proxy defaults, so if you never overrode
 the ports, no action is needed.
 
-### 4. Probes are no longer set by default
+If you enable `gatewayApi`, the `ports` list must contain an entry named
+`http`: its `servicePort` is used as the HTTPRoute backend port.
 
-**Action required.** `startupProbe`, `livenessProbe` and `readinessProbe` now
-default to `{}` (disabled) instead of a built-in httpGet ping probe. This is
-because different outpost types need different probe mechanisms (HTTP ping
-for proxy vs. TCP socket for LDAP), and Helm's value merging can't safely
-override one probe handler type with another.
-
-If you relied on the chart's default probes, add them explicitly:
-
-```yaml
-livenessProbe:
-  httpGet:
-    path: /outpost.goauthentik.io/ping
-    port: http
-  initialDelaySeconds: 10
-  periodSeconds: 10
-readinessProbe:
-  httpGet:
-    path: /outpost.goauthentik.io/ping
-    port: http
-  initialDelaySeconds: 10
-  periodSeconds: 10
-```
-
-For an LDAP outpost, use a `tcpSocket` probe instead — see
-[Deploying an LDAP outpost](#deploying-an-ldap-outpost) below.
-
-If you skip this, the pod deploys with **no health checks at all**.
-
-### 5. New rollout defaults: `progressDeadlineSeconds` and rolling-update strategy
+### 4. New rollout defaults: `progressDeadlineSeconds` and rolling-update strategy
 
 The Deployment now sets `progressDeadlineSeconds: 1200` and an explicit
 `RollingUpdate` strategy (`maxSurge: 1`, `maxUnavailable: 0`) instead of
@@ -115,20 +92,22 @@ adding an extra pod during updates instead of taking one down first —
 override `progressDeadlineSeconds` / add your own `strategy` values if this
 doesn't suit your rollout constraints.
 
-### 6. `authentik.existingSecretName` bug fix
-
-Previously, setting `authentik.existingSecretName` did not actually prevent
-the chart from also creating its own Secret. This is now fixed — if you set
-`existingSecretName`, no Secret is created by the chart. No action needed
-unless you were unknowingly relying on the extra (unused) Secret existing.
-
 ## Deploying an LDAP outpost
+
+The default values are for the proxy outpost, so an LDAP outpost needs three
+overrides: the outpost type, the ports and the probes.
 
 ```yaml
 outpostType: ldap
 
 image:
   repository: ghcr.io/goauthentik
+
+# LDAP is plain TCP: expose it through the Service, not through ingress/gatewayApi.
+service:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - 10.0.0.0/8
 
 ports:
   - name: ldap
@@ -143,27 +122,46 @@ ports:
 
 startupProbe:
   tcpSocket:
-    port: ldaps
+    port: 6636
   periodSeconds: 10
   failureThreshold: 120
 
 livenessProbe:
+  httpGet: null
   tcpSocket:
-    port: ldaps
+    port: 6636
   periodSeconds: 10
   timeoutSeconds: 3
   failureThreshold: 3
 
 readinessProbe:
+  httpGet: null
   tcpSocket:
-    port: ldaps
+    port: 6636
   periodSeconds: 30
   timeoutSeconds: 3
   failureThreshold: 5
 ```
 
-LDAP outposts don't expose an HTTP `/ping` endpoint, so `ingress.enabled`
-should stay `false` for LDAP releases.
+### Probes
+
+By default `livenessProbe` and `readinessProbe` perform an HTTP GET on
+`/outpost.goauthentik.io/ping`, which only the proxy outpost serves.
+`startupProbe` is disabled by default.
+
+LDAP outposts have no HTTP `/ping` endpoint, so the default probes must be
+replaced. Helm merges your values into the chart defaults, so set
+`httpGet: null` on `livenessProbe` and `readinessProbe` to remove the default
+handler. Otherwise the probe would contain both `httpGet` and `tcpSocket` and
+Kubernetes rejects the Deployment. `startupProbe` has no default handler, so it
+needs no `null`.
+
+Notes:
+- `6636` is the LDAPS container port, fixed by the authentik LDAP image.
+- The default `initialDelaySeconds: 10` is still inherited by the liveness and
+  readiness probes. Set `initialDelaySeconds: 0` to override it.
+- LDAP outposts don't serve HTTP ping, so keep `ingress.enabled` and
+  `gatewayApi.enabled` set to `false` for LDAP releases.
 
 ## Configuration
 
