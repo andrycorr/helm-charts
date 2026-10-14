@@ -6,9 +6,16 @@ fullnameOverride: ""
 # -- Number of outpost pods to deploy.
 replicaCount: 1
 
+# -- Type of outpost: proxy, ldap, radius. Used as container name.
+outpostType: proxy
+
+# -- Deployment rollout settings.
+progressDeadlineSeconds: 1200
+
 image:
-  # -- The container image repository for the Authentik proxy outpost.
-  repository: "ghcr.io/goauthentik/proxy"
+  # -- Base container image repository. The outpost type is appended
+  # automatically (e.g. "ghcr.io/goauthentik/proxy" or ".../ldap").
+  repository: "ghcr.io/goauthentik"
   # -- The image pull policy.
   pullPolicy: IfNotPresent
   # -- The container image tag. Overrides the chart's appVersion if set.
@@ -31,24 +38,66 @@ authentik:
 service:
   # -- The type of Kubernetes service to create for the outpost.
   type: ClusterIP
-  # -- The HTTP port for the service.
-  portHttp: 9000
-  # -- The HTTPS port for the service.
-  portHttps: 9443
+  # -- IP ranges allowed to access the Service (relevant only when type: LoadBalancer).
+  loadBalancerSourceRanges: []
+ 
+# -- Container ports, exposed both on the pod and on the Service.
+# For a proxy outpost the defaults below are correct as-is.
+# For an LDAP outpost, replace with e.g.:
+#   - name: ldap
+#     containerPort: 3389
+#     servicePort: 389
+#     protocol: TCP
+#   - name: ldaps
+#     containerPort: 6636
+#     servicePort: 636
+#     protocol: TCP
+ports:
+  - name: http
+    containerPort: 9000
+    servicePort: 9000
+    protocol: TCP
+  - name: https
+    containerPort: 9443
+    servicePort: 9443
+    protocol: TCP
 
-# -- Liveness probe configuration for the outpost pod.
-# Checks if the outpost is alive by hitting the ping endpoint.
-# If the probe fails, Kubernetes will restart the pod.
+# -- Startup probe for the outpost pod. Disabled by default ({}).
+# Example for an LDAP outpost:
+#   startupProbe:
+#     tcpSocket:
+#       port: 6636
+#     periodSeconds: 10
+#     failureThreshold: 120
+startupProbe: {}
+ 
+# -- Liveness probe for the outpost pod. Leave empty ({}) to disable.
+# The default is for the proxy outpost, which serves /outpost.goauthentik.io/ping on the http port.
+# The LDAP outpost has no HTTP ping endpoint. Helm merges your values into these defaults,
+# so remove the default handler with `httpGet: null` when switching to another handler:
+#   livenessProbe:
+#     httpGet: null
+#     tcpSocket:
+#       port: 6636
+#     periodSeconds: 10
+#     timeoutSeconds: 3
+#     failureThreshold: 3
 livenessProbe:
   httpGet:
     path: /outpost.goauthentik.io/ping
     port: http
   initialDelaySeconds: 10
   periodSeconds: 10
-
-# -- Readiness probe configuration for the outpost pod.
-# Checks if the outpost is ready to receive traffic.
-# If the probe fails, Kubernetes will remove the pod from the load balancer.
+ 
+# -- Readiness probe for the outpost pod. Leave empty ({}) to disable.
+# The default is for the proxy outpost. For an LDAP outpost use `httpGet: null` as above:
+#   readinessProbe:
+#     httpGet: null
+#     tcpSocket:
+#       port: 6636
+#     periodSeconds: 30
+#     timeoutSeconds: 3
+#     failureThreshold: 5
 readinessProbe:
   httpGet:
     path: /outpost.goauthentik.io/ping

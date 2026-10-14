@@ -1,0 +1,38 @@
+outpostType: ldap
+authentik:
+  host: "https://authentik.test.com"
+  token: "token"
+  insecure: false
+service:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - "10.0.0.0/8"
+ports:
+  - name: ldap
+    containerPort: 3389
+    servicePort: 389
+  - name: ldaps
+    containerPort: 6636
+    servicePort: 636
+  - name: metrics
+    containerPort: 9300
+    servicePort: 9300
+startupProbe:
+  tcpSocket:
+    port: 6636
+  periodSeconds: 10
+  failureThreshold: 120
+livenessProbe:
+  httpGet: null
+  tcpSocket:
+    port: 6636
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  httpGet: null
+  tcpSocket:
+    port: 6636
+  periodSeconds: 30
+  timeoutSeconds: 3
+  failureThreshold: 5

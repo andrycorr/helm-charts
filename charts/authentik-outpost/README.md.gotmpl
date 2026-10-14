@@ -1,6 +1,13 @@
 # Authentik Outpost Helm Chart
 
-This chart deploys a [manual Authentik Proxy Outpost](https://docs.goauthentik.io/add-secure-apps/outposts/) to your Kubernetes cluster.
+This chart deploys a manually managed [Authentik Outpost](https://docs.goauthentik.io/add-secure-apps/outposts/)
+to your Kubernetes cluster. It supports multiple outpost types — `proxy` and
+`ldap` — selected via `outpostType`; the container image, container name,
+and probe requirements differ per type, but the rest of the chart (Deployment,
+Service, Secret, Ingress) is shared.
+
+The default values are tuned for the **proxy** outpost. To deploy an LDAP
+outpost see [Deploying an LDAP outpost](#deploying-an-ldap-outpost).
 
 ## Prerequisites
 
@@ -14,9 +21,147 @@ helm repo add code-tool https://code-tool.github.io/helm-charts
 helm repo update
 
 helm install authentik-outpost code-tool/authentik-outpost \
+  --set outpostType=proxy \
   --set authentik.host=https://accounts.example.com \
   --set authentik.token=your-outpost-token
 ```
+
+## Upgrading to v0.3.0 (Breaking Changes)
+
+This version turns the chart from proxy-only into a universal chart supporting
+multiple Authentik outpost types. Review the changes below before upgrading
+an existing release.
+
+### 1. `image.repository` no longer includes the outpost type
+
+Previously the image was rendered from `image.repository` as-is
+(e.g. `ghcr.io/goauthentik/proxy`). Now the chart appends `outpostType`
+automatically:
+
+```
+image: "{{ .Values.image.repository }}/{{ .Values.outpostType }}:{{ tag }}"
+```
+
+**Action required:** update `image.repository` to the base path, without
+the outpost type suffix.
+
+| Before                          | After                  |
+|----------------------------------|------------------------|
+| `ghcr.io/goauthentik/proxy`      | `ghcr.io/goauthentik`  |
+
+If you don't update this, the image path will be malformed
+(`ghcr.io/goauthentik/proxy/proxy`) and the pod will fail to pull.
+
+### 2. New value: `outpostType`
+
+Set `outpostType` to the kind of outpost you're deploying. Allowed values:
+`proxy` and `ldap`. Any other value fails at render time.
+It's used both for the image path above and as the container name.
+Default: `proxy` (safe for existing proxy releases that don't set it).
+
+### 3. `service.portHttp` / `service.portHttps` replaced by a unified `ports` list
+
+**Action required** if you previously overrode `service.portHttp`/`portHttps` —
+these keys are no longer read. Migrate to:
+
+```yaml
+ports:
+  - name: http
+    containerPort: 9000
+    servicePort: 9000
+    protocol: TCP
+  - name: https
+    containerPort: 9443
+    servicePort: 9443
+    protocol: TCP
+```
+
+The defaults above match the old proxy defaults, so if you never overrode
+the ports, no action is needed.
+
+If you enable `gatewayApi`, the `ports` list must contain an entry named
+`http`: its `servicePort` is used as the HTTPRoute backend port.
+
+### 4. New rollout defaults: `progressDeadlineSeconds` and rolling-update strategy
+
+The Deployment now sets `progressDeadlineSeconds: 1200` and an explicit
+`RollingUpdate` strategy (`maxSurge: 1`, `maxUnavailable: 0`) instead of
+Kubernetes' built-in defaults (`maxSurge: 25%`, `maxUnavailable: 25%`).
+No action required, but note that rollouts now guarantee zero downtime by
+adding an extra pod during updates instead of taking one down first —
+override `progressDeadlineSeconds` / add your own `strategy` values if this
+doesn't suit your rollout constraints.
+
+## Deploying an LDAP outpost
+
+The default values are for the proxy outpost, so an LDAP outpost needs three
+overrides: the outpost type, the ports and the probes.
+
+```yaml
+outpostType: ldap
+
+image:
+  repository: ghcr.io/goauthentik
+
+# LDAP is plain TCP: expose it through the Service, not through ingress/gatewayApi.
+service:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    - 10.0.0.0/8
+
+ports:
+  - name: ldap
+    containerPort: 3389
+    servicePort: 389
+  - name: ldaps
+    containerPort: 6636
+    servicePort: 636
+  - name: metrics
+    containerPort: 9300
+    servicePort: 9300
+
+startupProbe:
+  tcpSocket:
+    port: 6636
+  periodSeconds: 10
+  failureThreshold: 120
+
+livenessProbe:
+  httpGet: null
+  tcpSocket:
+    port: 6636
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet: null
+  tcpSocket:
+    port: 6636
+  periodSeconds: 30
+  timeoutSeconds: 3
+  failureThreshold: 5
+```
+
+### Probes
+
+By default `livenessProbe` and `readinessProbe` perform an HTTP GET on
+`/outpost.goauthentik.io/ping`, which only the proxy outpost serves.
+`startupProbe` is disabled by default.
+
+LDAP outposts have no HTTP `/ping` endpoint, so the default probes must be
+replaced. Helm merges your values into the chart defaults, so set
+`httpGet: null` on `livenessProbe` and `readinessProbe` to remove the default
+handler. Otherwise the probe would contain both `httpGet` and `tcpSocket` and
+Kubernetes rejects the Deployment. `startupProbe` has no default handler, so it
+needs no `null`.
+
+Notes:
+- `6636` is the LDAPS container port, fixed by the authentik LDAP image.
+- The default `initialDelaySeconds: 10` is still inherited by the liveness and
+  readiness probes. Set `initialDelaySeconds: 0` to override it.
+- LDAP outposts don't serve HTTP ping, so keep `ingress.enabled` and
+  `gatewayApi.enabled` set to `false` for LDAP releases.
 
 ## Configuration
 

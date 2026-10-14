@@ -8,9 +8,15 @@ metadata:
     app.kubernetes.io/name: authentik-outpost
     app.kubernetes.io/instance: golden-file-test
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "2026.2.6"
+    app.kubernetes.io/version: "2026.8.3"
 spec:
   replicas: 1
+  progressDeadlineSeconds: 1200
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: authentik-outpost
@@ -23,7 +29,7 @@ spec:
     spec:
       containers:
         - name: proxy
-          image: "ghcr.io/goauthentik/proxy:2026.2.6"
+          image: "ghcr.io/goauthentik/proxy:2026.8.3"
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -64,7 +70,7 @@ metadata:
     app.kubernetes.io/name: authentik-outpost
     app.kubernetes.io/instance: golden-file-test
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "2026.2.6"
+    app.kubernetes.io/version: "2026.8.3"
 type: Opaque
 data:
   AUTHENTIK_HOST: "aHR0cHM6Ly9hdXRoZW50aWsudGVzdC5jb20="
@@ -80,7 +86,7 @@ metadata:
     app.kubernetes.io/name: authentik-outpost
     app.kubernetes.io/instance: golden-file-test
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "2026.2.6"
+    app.kubernetes.io/version: "2026.8.3"
 spec:
   type: ClusterIP
   ports:
@@ -136,7 +142,7 @@ metadata:
     app.kubernetes.io/name: authentik-outpost
     app.kubernetes.io/instance: golden-file-test
     app.kubernetes.io/managed-by: Helm
-    app.kubernetes.io/version: "2026.2.6"
+    app.kubernetes.io/version: "2026.8.3"
 spec:
   parentRefs:
     - name: my-gateway
